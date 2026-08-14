@@ -43,6 +43,7 @@ function minimalTrack(partial: Partial<Track> = {}): Track {
 describe('LobbyService', () => {
   let service: LobbyService;
   let events: { emit: jest.Mock };
+  let betting: { settleBetsInTransaction: jest.Mock };
   let repo: {
     findOne: jest.Mock;
     update: jest.Mock;
@@ -64,6 +65,7 @@ describe('LobbyService', () => {
     };
 
     events = { emit: jest.fn() };
+    betting = { settleBetsInTransaction: jest.fn().mockResolvedValue([]) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -77,7 +79,7 @@ describe('LobbyService', () => {
         { provide: SimulationService, useValue: {} },
         { provide: TelemetryService, useValue: { persistMultiplayer: jest.fn() } },
         { provide: RatingService, useValue: { processResultInTransaction: jest.fn() } },
-        { provide: BettingService, useValue: { settleBetsInTransaction: jest.fn() } },
+        { provide: BettingService, useValue: betting },
         { provide: AIService, useValue: {} },
         { provide: EventEmitter2, useValue: events },
       ],
@@ -295,7 +297,12 @@ describe('LobbyService', () => {
       };
     }
 
-    it('retries the whole transaction on an optimistic lock conflict, then succeeds', async () => {
+    it('retries the whole transaction on an optimistic lock conflict, then succeeds and returns the settled bets', async () => {
+      const settled = [
+        { betId: 'b1', bettorUserId: 'u1', status: 'won', stake: 100, payout: 200 },
+      ];
+      betting.settleBetsInTransaction.mockResolvedValue(settled);
+
       let attempts = 0;
       repo.manager.transaction.mockImplementation(async (cb: any) => {
         attempts++;
@@ -305,9 +312,10 @@ describe('LobbyService', () => {
         return cb(fakeManager());
       });
 
-      await (service as any).settleWithRetry(lobby, hostId, oppId, result);
+      const out = await (service as any).settleWithRetry(lobby, hostId, oppId, result);
 
       expect(repo.manager.transaction).toHaveBeenCalledTimes(2);
+      expect(out).toBe(settled);
     });
 
     it('gives up and rethrows after exhausting retries', async () => {

@@ -13,7 +13,7 @@ import {
 import { Lobby } from '../lobby/entities/lobby.entity';
 import { LobbyStatus } from '../lobby/lobby.types';
 import { User } from '../users/entities/user.entity';
-import { BetStatus } from './betting.types';
+import { BetStatus, type BetSettlementSummary } from './betting.types';
 import { Bet } from './entities/bet.entity';
 
 @Injectable()
@@ -87,18 +87,25 @@ export class BettingService {
     });
   }
 
-  /** Uses `manager` so bet settlement participates in the caller's settlement transaction. */
+  /**
+   * Uses `manager` so bet settlement participates in the caller's settlement transaction.
+   * Returns a summary (not emitted here) so the caller can raise it as part of its own
+   * post-commit domain event — emitting from inside a transaction that might still roll
+   * back would announce a settlement that never happened.
+   */
   async settleBetsInTransaction(
     manager: EntityManager,
     lobbyId: string,
     winnerUserId: string | null,
-  ): Promise<void> {
+  ): Promise<BetSettlementSummary[]> {
     const betsRepo = manager.getRepository(Bet);
     const usersRepo = manager.getRepository(User);
 
     const pending = await betsRepo.find({
       where: { lobbyId, status: BetStatus.PENDING },
     });
+
+    const summaries: BetSettlementSummary[] = [];
 
     for (const bet of pending) {
       const refunded = winnerUserId === null;
@@ -116,6 +123,16 @@ export class BettingService {
         bettor.balance += bet.payout;
         await usersRepo.save(bettor);
       }
+
+      summaries.push({
+        betId: bet.id,
+        bettorUserId: bet.bettorUserId,
+        status: bet.status,
+        stake: bet.stake,
+        payout: bet.payout,
+      });
     }
+
+    return summaries;
   }
 }

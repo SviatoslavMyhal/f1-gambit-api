@@ -29,6 +29,7 @@ import { RatingService } from '../users/rating.service';
 import { User } from '../users/entities/user.entity';
 import { AIService } from '../ai/ai.service';
 import { BettingService } from '../betting/betting.service';
+import type { BetSettlementSummary } from '../betting/betting.types';
 import { Lobby } from './entities/lobby.entity';
 import type { CreateLobbyDto } from './dto/create-lobby.dto';
 import { LobbyStatus, WeatherCondition, type PlayerConfig } from './lobby.types';
@@ -317,7 +318,12 @@ export class LobbyService {
         opponentTelemetrySessionId: `${full.id}:opponent`,
       });
 
-      await this.settleWithRetry(full, hostUserId, opponentUserId, result);
+      const settledBets = await this.settleWithRetry(
+        full,
+        hostUserId,
+        opponentUserId,
+        result,
+      );
 
       this.events.emit(LOBBY_BATTLE_FINISHED, {
         lobbyId: full.id,
@@ -325,6 +331,7 @@ export class LobbyService {
         opponentUserId,
         winnerUserId: result.winner,
         gapSeconds: result.gapSeconds,
+        settledBets,
       });
     } catch (e) {
       await this.lobbies.update(lobby.id, { status: LobbyStatus.CONFIGURING });
@@ -347,10 +354,10 @@ export class LobbyService {
     opponentUserId: string,
     result: MultiplayerSimulationResult,
     maxAttempts = 3,
-  ): Promise<void> {
+  ): Promise<BetSettlementSummary[]> {
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        await this.lobbies.manager.transaction(async (manager: EntityManager) => {
+        return await this.lobbies.manager.transaction(async (manager: EntityManager) => {
           await this.telemetry.persistMultiplayer(full.id, result, manager);
 
           const ratingChanges = await this.rating.processResultInTransaction(
@@ -360,7 +367,11 @@ export class LobbyService {
             result.winner,
           );
 
-          await this.betting.settleBetsInTransaction(manager, full.id, result.winner);
+          const settledBets = await this.betting.settleBetsInTransaction(
+            manager,
+            full.id,
+            result.winner,
+          );
 
           const simulationResult = buildStoredMultiplayerSimulationResult(
             result,
@@ -373,8 +384,9 @@ export class LobbyService {
             winnerUserId: result.winner,
             simulationResult: simulationResult as object,
           });
+
+          return settledBets;
         });
-        return;
       } catch (e) {
         const isLastAttempt = attempt === maxAttempts;
         if (!(e instanceof OptimisticLockVersionMismatchError) || isLastAttempt) {
@@ -382,6 +394,8 @@ export class LobbyService {
         }
       }
     }
+    /* unreachable: maxAttempts >= 1 always returns or throws above */
+    throw new Error('settlement retry loop exhausted without resolution');
   }
 
   async getSummaryExport(

@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
+import { LobbyGateway } from './lobby.gateway';
 import {
   LOBBY_BATTLE_FINISHED,
   LOBBY_OPPONENT_JOINED,
@@ -8,11 +9,14 @@ import {
 } from './events/lobby.events';
 
 /**
- * Thin domain listeners: structured logs today; extend with metrics / WS rooms later.
+ * Notification side-effect: broadcasts to the lobby's WS room. Structured logs stay here too;
+ * extend with metrics later.
  */
 @Injectable()
 export class LobbyEventsListener {
   private readonly logger = new Logger(LobbyEventsListener.name);
+
+  constructor(private readonly gateway: LobbyGateway) {}
 
   @OnEvent(LOBBY_OPPONENT_JOINED)
   handleOpponentJoined(payload: LobbyOpponentJoinedPayload): void {
@@ -28,5 +32,6 @@ export class LobbyEventsListener {
     this.logger.log(
       `lobby.battle.finished lobbyId=${payload.lobbyId} winner=${winner} gapSeconds=${payload.gapSeconds}`,
     );
+    this.gateway.emitBattleFinished(payload);
   }
 }
