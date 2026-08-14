@@ -2,8 +2,9 @@ import { BadRequestException, ConflictException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { IsNull } from 'typeorm';
+import { IsNull, OptimisticLockVersionMismatchError } from 'typeorm';
 import { AIService } from '../ai/ai.service';
+import { BettingService } from '../betting/betting.service';
 import { SimulationService } from '../simulation/simulation.service';
 import { TelemetryService } from '../telemetry/telemetry.service';
 import { TrackService } from '../track/track.service';
@@ -47,6 +48,7 @@ describe('LobbyService', () => {
     update: jest.Mock;
     save: jest.Mock;
     create: jest.Mock;
+    manager: { transaction: jest.Mock };
   };
 
   const hostId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -58,6 +60,7 @@ describe('LobbyService', () => {
       update: jest.fn().mockResolvedValue({ affected: 1 }),
       save: jest.fn(),
       create: jest.fn(),
+      manager: { transaction: jest.fn() },
     };
 
     events = { emit: jest.fn() };
@@ -72,8 +75,9 @@ describe('LobbyService', () => {
           useValue: { findById: jest.fn(), getRandomTrack: jest.fn() },
         },
         { provide: SimulationService, useValue: {} },
-        { provide: TelemetryService, useValue: {} },
-        { provide: RatingService, useValue: {} },
+        { provide: TelemetryService, useValue: { persistMultiplayer: jest.fn() } },
+        { provide: RatingService, useValue: { processResultInTransaction: jest.fn() } },
+        { provide: BettingService, useValue: { settleBetsInTransaction: jest.fn() } },
         { provide: AIService, useValue: {} },
         { provide: EventEmitter2, useValue: events },
       ],
@@ -249,6 +253,83 @@ describe('LobbyService', () => {
           status: LobbyStatus.CONFIGURING,
         }),
       );
+    });
+  });
+
+  describe('settleWithRetry (private: ELO + bet settlement + result persistence)', () => {
+    function minimalTelemetry() {
+      return {
+        sessionId: 's',
+        trackSlug: 'test-track',
+        totalLaps: 1,
+        lapTimes: [],
+        tireData: [],
+        speedTrace: [],
+        sectorSplits: [],
+        events: [],
+        strategy: [],
+      };
+    }
+
+    const lobby = {
+      id: 'lobby-1',
+      track: minimalTrack({ id: 't1' }),
+    } as unknown as Lobby;
+
+    const result = {
+      winner: hostId,
+      gapSeconds: 1.2,
+      host: { userId: hostId, result: { telemetry: minimalTelemetry() } },
+      opponent: { userId: oppId, result: { telemetry: minimalTelemetry() } },
+      trackSlug: 'test-track',
+      weather: WeatherCondition.DRY,
+      seed: 1,
+      simulatedAt: new Date().toISOString(),
+    } as any;
+
+    function fakeManager() {
+      return {
+        getRepository: jest
+          .fn()
+          .mockReturnValue({ update: jest.fn().mockResolvedValue({ affected: 1 }) }),
+      };
+    }
+
+    it('retries the whole transaction on an optimistic lock conflict, then succeeds', async () => {
+      let attempts = 0;
+      repo.manager.transaction.mockImplementation(async (cb: any) => {
+        attempts++;
+        if (attempts === 1) {
+          throw new OptimisticLockVersionMismatchError('User', 1, 2);
+        }
+        return cb(fakeManager());
+      });
+
+      await (service as any).settleWithRetry(lobby, hostId, oppId, result);
+
+      expect(repo.manager.transaction).toHaveBeenCalledTimes(2);
+    });
+
+    it('gives up and rethrows after exhausting retries', async () => {
+      repo.manager.transaction.mockImplementation(async () => {
+        throw new OptimisticLockVersionMismatchError('User', 1, 2);
+      });
+
+      await expect(
+        (service as any).settleWithRetry(lobby, hostId, oppId, result),
+      ).rejects.toBeInstanceOf(OptimisticLockVersionMismatchError);
+      expect(repo.manager.transaction).toHaveBeenCalledTimes(3);
+    });
+
+    it('does not retry errors unrelated to version conflicts', async () => {
+      repo.manager.transaction.mockImplementation(async () => {
+        throw new Error('boom');
+      });
+
+      await expect(
+        (service as any).settleWithRetry(lobby, hostId, oppId, result),
+      ).rejects.toThrow('boom');
+      expect(repo.manager.transaction).toHaveBeenCalledTimes(1);
     });
   });
 });

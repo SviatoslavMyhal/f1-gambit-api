@@ -80,29 +80,30 @@ export class RatingService {
           ? 'loss'
           : 'draw';
 
-    const hostNew = Math.max(100, host.rating + deltaHost);
-    const oppNew = Math.max(100, opponent.rating + deltaOpp);
+    const hostOldRating = host.rating;
+    const oppOldRating = opponent.rating;
+    const hostNew = Math.max(100, hostOldRating + deltaHost);
+    const oppNew = Math.max(100, oppOldRating + deltaOpp);
 
-    await Promise.all([
-      usersRepo.update(hostId, {
-        rating: hostNew,
-        wins: host.wins + (hostOutcome === 'win' ? 1 : 0),
-        losses: host.losses + (hostOutcome === 'loss' ? 1 : 0),
-        draws: host.draws + (hostOutcome === 'draw' ? 1 : 0),
-        racesCompleted: host.racesCompleted + 1,
-      }),
-      usersRepo.update(opponentId, {
-        rating: oppNew,
-        wins: opponent.wins + (oppOutcome === 'win' ? 1 : 0),
-        losses: opponent.losses + (oppOutcome === 'loss' ? 1 : 0),
-        draws: opponent.draws + (oppOutcome === 'draw' ? 1 : 0),
-        racesCompleted: opponent.racesCompleted + 1,
-      }),
-    ]);
+    // save() (not update()) so the @VersionColumn optimistic-lock check applies —
+    // a concurrent settlement touching the same user throws OptimisticLockVersionMismatchError.
+    host.rating = hostNew;
+    host.wins += hostOutcome === 'win' ? 1 : 0;
+    host.losses += hostOutcome === 'loss' ? 1 : 0;
+    host.draws += hostOutcome === 'draw' ? 1 : 0;
+    host.racesCompleted += 1;
+
+    opponent.rating = oppNew;
+    opponent.wins += oppOutcome === 'win' ? 1 : 0;
+    opponent.losses += oppOutcome === 'loss' ? 1 : 0;
+    opponent.draws += oppOutcome === 'draw' ? 1 : 0;
+    opponent.racesCompleted += 1;
+
+    await Promise.all([usersRepo.save(host), usersRepo.save(opponent)]);
 
     return [
-      { userId: hostId, delta: hostNew - host.rating, newRating: hostNew },
-      { userId: opponentId, delta: oppNew - opponent.rating, newRating: oppNew },
+      { userId: hostId, delta: hostNew - hostOldRating, newRating: hostNew },
+      { userId: opponentId, delta: oppNew - oppOldRating, newRating: oppNew },
     ];
   }
 

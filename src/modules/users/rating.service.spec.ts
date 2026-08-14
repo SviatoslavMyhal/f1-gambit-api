@@ -11,6 +11,8 @@ function user(partial: Partial<User> & Pick<User, 'id' | 'rating'>): User {
     losses: 0,
     draws: 0,
     racesCompleted: 0,
+    balance: 1000,
+    version: 1,
     createdAt: new Date(),
     updatedAt: new Date(),
     ...partial,
@@ -19,12 +21,12 @@ function user(partial: Partial<User> & Pick<User, 'id' | 'rating'>): User {
 
 describe('RatingService', () => {
   let service: RatingService;
-  let repo: jest.Mocked<Pick<Repository<User>, 'findOneOrFail' | 'update'>>;
+  let repo: jest.Mocked<Pick<Repository<User>, 'findOneOrFail' | 'save'>>;
 
   beforeEach(() => {
     repo = {
       findOneOrFail: jest.fn(),
-      update: jest.fn().mockResolvedValue({ affected: 1 }),
+      save: jest.fn().mockImplementation((u) => Promise.resolve(u)),
     };
     const manager = {
       getRepository: jest.fn().mockReturnValue(repo),
@@ -101,17 +103,17 @@ describe('RatingService', () => {
       .mockResolvedValueOnce(h)
       .mockResolvedValueOnce(o);
     await service.processResult('h', 'o', 'h');
-    expect(repo.update).toHaveBeenCalledWith(
-      'h',
+    expect(repo.save).toHaveBeenCalledWith(
       expect.objectContaining({
+        id: 'h',
         wins: 3,
         losses: 1,
         racesCompleted: 4,
       }),
     );
-    expect(repo.update).toHaveBeenCalledWith(
-      'o',
+    expect(repo.save).toHaveBeenCalledWith(
       expect.objectContaining({
+        id: 'o',
         wins: 1,
         losses: 3,
         racesCompleted: 4,

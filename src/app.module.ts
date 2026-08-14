@@ -6,6 +6,7 @@ import { createTypeOrmOptions } from './database/database.config';
 import { CalibrationModule } from './modules/calibration/calibration.module';
 import { AiModule } from './modules/ai/ai.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { BettingModule } from './modules/betting/betting.module';
 import { F1DataModule } from './modules/f1-data/f1-data.module';
 import { LeaderboardModule } from './modules/leaderboard/leaderboard.module';
 import { LobbyModule } from './modules/lobby/lobby.module';
@@ -37,6 +38,7 @@ import { CorrelationService } from './common/request-scoped/correlation.service'
     AuthModule,
     UsersModule,
     LobbyModule,
+    BettingModule,
     AiModule,
     SetupModule,
     SimulationModule,

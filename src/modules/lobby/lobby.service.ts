@@ -11,17 +11,24 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
-import { EntityManager, IsNull, Repository } from 'typeorm';
+import {
+  EntityManager,
+  IsNull,
+  OptimisticLockVersionMismatchError,
+  Repository,
+} from 'typeorm';
 import { CarSetupDto } from '../setup/dto/car-setup.dto';
 import { SimulationService } from '../simulation/simulation.service';
 import { buildStoredMultiplayerSimulationResult } from '../simulation/multiplayer-stored-result.builder';
 import { raceStrategyDtoToRaceStrategy } from '../simulation/race-strategy.mapper';
 import type { RaceStrategyDto } from '../simulation/dto/race-strategy.dto';
+import type { MultiplayerSimulationResult } from '../simulation/multiplayer.types';
 import { TelemetryService } from '../telemetry/telemetry.service';
 import { TrackService } from '../track/track.service';
 import { RatingService } from '../users/rating.service';
 import { User } from '../users/entities/user.entity';
 import { AIService } from '../ai/ai.service';
+import { BettingService } from '../betting/betting.service';
 import { Lobby } from './entities/lobby.entity';
 import type { CreateLobbyDto } from './dto/create-lobby.dto';
 import { LobbyStatus, WeatherCondition, type PlayerConfig } from './lobby.types';
@@ -45,6 +52,7 @@ export class LobbyService {
     private readonly simulation: SimulationService,
     private readonly telemetry: TelemetryService,
     private readonly rating: RatingService,
+    private readonly betting: BettingService,
     private readonly ai: AIService,
     private readonly lobbyResponse: LobbyResponseMapper,
     private readonly events: EventEmitter2,
@@ -309,28 +317,7 @@ export class LobbyService {
         opponentTelemetrySessionId: `${full.id}:opponent`,
       });
 
-      await this.lobbies.manager.transaction(async (manager: EntityManager) => {
-        await this.telemetry.persistMultiplayer(full.id, result, manager);
-
-        const ratingChanges = await this.rating.processResultInTransaction(
-          manager,
-          hostUserId,
-          opponentUserId,
-          result.winner,
-        );
-
-        const simulationResult = buildStoredMultiplayerSimulationResult(
-          result,
-          ratingChanges,
-          full.track,
-        );
-
-        await manager.getRepository(Lobby).update(full.id, {
-          status: LobbyStatus.FINISHED,
-          winnerUserId: result.winner,
-          simulationResult: simulationResult as object,
-        });
-      });
+      await this.settleWithRetry(full, hostUserId, opponentUserId, result);
 
       this.events.emit(LOBBY_BATTLE_FINISHED, {
         lobbyId: full.id,
@@ -345,6 +332,56 @@ export class LobbyService {
     }
 
     return this.findOne(lobby.id);
+  }
+
+  /**
+   * Applies ELO + bet settlement + result persistence in one all-or-nothing transaction.
+   * `User.rating`/`User.balance` are optimistically locked (`@VersionColumn`); a concurrent
+   * settlement touching the same user (e.g. they're in two lobbies finishing at once, or they
+   * place a bet mid-settlement) throws OptimisticLockVersionMismatchError and we retry the whole
+   * transaction with fresh reads rather than silently lose one side's update.
+   */
+  private async settleWithRetry(
+    full: Lobby,
+    hostUserId: string,
+    opponentUserId: string,
+    result: MultiplayerSimulationResult,
+    maxAttempts = 3,
+  ): Promise<void> {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        await this.lobbies.manager.transaction(async (manager: EntityManager) => {
+          await this.telemetry.persistMultiplayer(full.id, result, manager);
+
+          const ratingChanges = await this.rating.processResultInTransaction(
+            manager,
+            hostUserId,
+            opponentUserId,
+            result.winner,
+          );
+
+          await this.betting.settleBetsInTransaction(manager, full.id, result.winner);
+
+          const simulationResult = buildStoredMultiplayerSimulationResult(
+            result,
+            ratingChanges,
+            full.track,
+          );
+
+          await manager.getRepository(Lobby).update(full.id, {
+            status: LobbyStatus.FINISHED,
+            winnerUserId: result.winner,
+            simulationResult: simulationResult as object,
+          });
+        });
+        return;
+      } catch (e) {
+        const isLastAttempt = attempt === maxAttempts;
+        if (!(e instanceof OptimisticLockVersionMismatchError) || isLastAttempt) {
+          throw e;
+        }
+      }
+    }
   }
 
   async getSummaryExport(

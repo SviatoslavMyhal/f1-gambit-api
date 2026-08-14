@@ -24,6 +24,7 @@ import { TrackService } from '../../src/modules/track/track.service';
 import { SimulationService } from '../../src/modules/simulation/simulation.service';
 import { TelemetryService } from '../../src/modules/telemetry/telemetry.service';
 import { RatingService } from '../../src/modules/users/rating.service';
+import { BettingService } from '../../src/modules/betting/betting.service';
 import { AIService } from '../../src/modules/ai/ai.service';
 
 // ── fixtures ─────────────────────────────────────────────────────────────────
@@ -95,6 +96,7 @@ async function buildModule() {
       { provide: SimulationService, useValue: {} },
       { provide: TelemetryService,  useValue: {} },
       { provide: RatingService,     useValue: {} },
+      { provide: BettingService,    useValue: {} },
       { provide: AIService,         useValue: {} },
     ],
   }).compile();

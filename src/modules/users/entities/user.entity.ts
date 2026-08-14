@@ -4,6 +4,7 @@ import {
   Entity,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
+  VersionColumn,
 } from 'typeorm';
 
 @Entity('users')
@@ -34,6 +35,13 @@ export class User {
 
   @Column({ type: 'int', default: 0 })
   racesCompleted: number;
+
+  @Column({ type: 'int', default: 1000 })
+  balance: number;
+
+  /** Optimistic lock: rejects a save() if `rating`/`balance` were changed by a concurrent transaction since read. */
+  @VersionColumn()
+  version: number;
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
