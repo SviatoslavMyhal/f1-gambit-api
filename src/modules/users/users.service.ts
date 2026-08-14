@@ -62,7 +62,7 @@ export class UsersService {
     return this.repo.find({
       order: { rating: 'DESC' },
       take: n,
-      select: ['id', 'username', 'rating', 'wins', 'losses', 'racesCompleted'],
+      select: ['id', 'username', 'rating', 'rank', 'wins', 'losses', 'racesCompleted'],
     });
   }
 }

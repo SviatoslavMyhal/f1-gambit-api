@@ -39,6 +39,10 @@ export class User {
   @Column({ type: 'int', default: 1000 })
   balance: number;
 
+  /** Materialized RANK() OVER (ORDER BY rating DESC), recomputed by LeaderboardRankProcessor. */
+  @Column({ type: 'int', nullable: true })
+  rank: number | null;
+
   /** Optimistic lock: rejects a save() if `rating`/`balance` were changed by a concurrent transaction since read. */
   @VersionColumn()
   version: number;

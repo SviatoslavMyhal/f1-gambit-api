@@ -1,8 +1,10 @@
 import { Module } from '@nestjs/common';
+import { BullModule } from '@nestjs/bullmq';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { createTypeOrmOptions } from './database/database.config';
+import { createBullRootOptions } from './queue/queue.config';
 import { CalibrationModule } from './modules/calibration/calibration.module';
 import { AiModule } from './modules/ai/ai.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -32,6 +34,11 @@ import { CorrelationService } from './common/request-scoped/correlation.service'
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: createTypeOrmOptions,
+    }),
+    BullModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: createBullRootOptions,
     }),
     EventEmitterModule.forRoot(),
     SessionsModule,

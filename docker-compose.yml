@@ -11,5 +11,14 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
+  redis:
+    image: redis:7-alpine
+    # Avoid clashing with another local Redis/Docker stack on host :6379
+    ports:
+      - "${GAMBIT_REDIS_PORT:-6380}:6379"
+    volumes:
+      - redisdata:/data
+
 volumes:
   pgdata:
+  redisdata:
