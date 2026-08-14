@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: gambit
+      POSTGRES_PASSWORD: gambit
+      POSTGRES_DB: gambit
+    # Avoid clashing with another local Postgres/Docker stack on host :5432
+    ports:
+      - "${GAMBIT_PG_PORT:-5434}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:

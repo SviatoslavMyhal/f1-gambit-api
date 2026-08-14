@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 2,
+  "winner": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  "gapSeconds": 2.415,
+  "trackSlug": "monza",
+  "trackSectorLengthKm": [2.1, 3.4, 1.8],
+  "weather": "dry",
+  "seed": 123456789,
+  "simulatedAt": "2026-05-01T12:00:00.000Z",
+  "ratingChanges": [
+    { "userId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "delta": 12, "newRating": 1512 },
+    { "userId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "delta": -12, "newRating": 1488 }
+  ],
+  "events": [
+    { "lap": 3, "type": "PIT_STOP", "side": "host", "detail": "Pit stop — compound change" },
+    { "lap": 5, "type": "LEAD_CHANGE", "side": "opponent", "detail": "[simulation] Race lead change — gap 0.120s after lap 5" },
+    { "lap": 7, "type": "LOCK_UP", "side": "opponent", "detail": "Front lock-up" }
+  ],
+  "host": {
+    "userId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    "result": {
+      "totalRaceTimeSeconds": 4823.1,
+      "bestLapSeconds": 92.04,
+      "laps": [
+        { "lap": 1, "timeSeconds": 95.2, "sectors": [31.1, 35.4, 28.7] },
+        { "lap": 2, "timeSeconds": 94.1, "sectors": [30.9, 35.0, 28.2] }
+      ],
+      "sectorHeatmap": [
+        ["pb", "improved"],
+        ["pb", "sb"],
+        ["pb", "none"]
+      ]
+    }
+  },
+  "opponent": {
+    "userId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    "result": {
+      "totalRaceTimeSeconds": 4825.515,
+      "bestLapSeconds": 92.1,
+      "laps": [
+        { "lap": 1, "timeSeconds": 95.5, "sectors": [31.5, 35.2, 28.8] },
+        { "lap": 2, "timeSeconds": 94.3, "sectors": [31.0, 34.9, 28.4] }
+      ],
+      "sectorHeatmap": [
+        ["none", "none"],
+        ["none", "pb"],
+        ["none", "none"]
+      ]
+    }
+  }
+}
